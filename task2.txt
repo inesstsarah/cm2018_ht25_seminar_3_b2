@@ -1,0 +1,25 @@
+Task 2: Tumour Models in Mice for Studying Treatment Effect
+Organic chemists and drug metabolism-pharmacokinetic researchers have 
+identified an experimental treatment for pancreatic cancer, a compound named ATC10X. Preclinical data suggests that the compound has the advantage of being mainly renally cleared. Because of this few interactions with other treatments are expected, meaning that the treatment could potentially be easier to manage.
+
+Researchers have carried out a study of treatment effect of ATXC10X. 
+A parallel preclinical pharmacodynamic (PD - the study of drug effect 
+over time) study have been carried out in mice with induced tumours and 
+xenograft mice with human cancer. These as two different disease models 
+of cancer in mice that are used in pharmaceutical research. 
+
+The dataset, Data_T2.csv Download Data_T2.csv, contains the following 
+columns: ID: subject id; Time: Time from initiation of study [days]; 
+DV: tumour volume [mm3]; Treatment: treatment group = 1, control = 0; 
+Model: 0 = mice with induced tumours, 1 = xenograft mice. 
+
+Study the effect of the experimental treatment on tumour growth.
+
+Explore the data visually.
+Propose and develop a statistical model to analyse the effects of 
+treatment across the two mice models. 
+Analyse the statistical model results.
+Carry out predictions to explore the impact of treatment and disease model. 
+Comment on the ability to carry out predictions using your model, 
+within and beyond the ranges of the data (interpolation and extrapolation). 
+ 
