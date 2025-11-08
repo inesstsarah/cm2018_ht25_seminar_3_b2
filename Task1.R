@@ -5,8 +5,13 @@ library(corrplot)
 
 data <- read.csv("data/Data_T1.csv")
 
-# Creates a variable, incidence rate, since all subgroups (region-sex-age) don't have identical Npopulations (although they are similar)
-data$IncidenceRate <- (data$NewCases / data$Npopulation) * 10000
+# Handle region and sex as factors instead of categorical
+data$Region <- factor(data$Region)
+data$Sex <- factor(data$Sex, levels = c("Male", "Female"))
+data$AgeGroup <- factor(data$AgeGroup, levels = c("20-39", "40-59", "60-79"))
+
+# Creates a new variable, incidence rate, since all subgroups (region-sex-age) don't have identical Npopulations (although they are similar)
+data$IncidenceRate <- (data$NewCases / data$Npopulation) * 100000
 
 # Overview of data
 str(data)
@@ -48,7 +53,7 @@ ggplot(data, aes(x = CLIstd, y = IncidenceRate, color = AgeGroup)) +
 # Relationship between smoking prevalence and cancer incidence, higher values mean healthier lifestyle
 ggplot(data, aes(x = SmokingPrevalence, y = IncidenceRate, color = Region)) +
   geom_point() + 
-  geom_smooth(method = "lm", se = FALSE)
+  geom_smooth(method = "lm", se = FALSE) +
   theme_minimal()
 # Shows higher incidence rate for smokers in region 2, 3 & 5, lower incidence rate for smokers in region 1 & 4
   
@@ -63,7 +68,7 @@ ggplot(data, aes(x = SmokingPrevalence, y = IncidenceRate, color = AgeGroup)) +
 # Relationship between median BMI and cancer incidence
 ggplot(data, aes(x = BMImedian, y = IncidenceRate, color = Region)) +
   geom_point() + 
-  geom_smooth(method = "lm", se = FALSE)
+  geom_smooth(method = "lm", se = FALSE) +
 theme_minimal()
 # Higher median BMI drastically increases incidence rate in region 2 & 4, slightly increases rate in region 5 
 # and decreases rate in region 1 & 3
