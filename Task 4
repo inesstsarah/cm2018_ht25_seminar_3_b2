@@ -1,0 +1,219 @@
+## =========================================================
+## Seminar 3 — Task 4 (Adverse Effects) 
+## =========================================================
+## - EDA (boxplots, proportions)
+## - Correlation matrix (scatter lower, heatmap+numbers upper)
+## - Logistic regression (summary, ORs, pseudo-R2, ROC)
+## - Model visualizations (pred vs GFR, forest plot, effects)
+## =========================================================
+
+## --- Setup ------------------------------------------------
+setwd("/Users/claraazzano/Desktop") 
+options(stringsAsFactors = FALSE)
+
+library(ggplot2)
+library(GGally)
+library(pscl)
+library(pROC)
+library(broom)
+library(effects)
+library(dplyr)
+
+## --- Load data -------------------------------------------
+data <- read.csv("merged_data.csv")
+
+## Basic checks to make sure the data was merged correctly ()
+print(dim(data))
+print(summary(data))
+print(table(data$Neutropenia))
+
+## Helpers: consistent theme & factor versions for plotting
+theme_pub <- theme_bw(base_size = 12) + theme(panel.grid = element_blank())
+data$Neutro_f <- factor(data$Neutropenia, levels = c(0,1), labels = c("No","Yes"))
+data$Sex_f    <- factor(data$Sex)
+
+## =========================================================
+## 1) EDA Plots
+## =========================================================
+
+# Age by neutropenia
+p_age <- ggplot(data, aes(x = Neutro_f, y = Age)) +
+  geom_boxplot(fill = "white") +
+  labs(x = "Neutropenia", y = "Age (years)", title = "Age by Neutropenia") +
+  theme_pub
+print(p_age)
+
+print(wilcox.test(Age ~ Neutropenia, data = data))
+
+# GFR by neutropenia
+p_gfr <- ggplot(data, aes(x = Neutro_f, y = GFR)) +
+  geom_boxplot(fill = "white") +
+  labs(x = "Neutropenia", y = "GFR (mL/min/1.73m²)", title = "GFR by Neutropenia") +
+  theme_pub
+print(p_gfr)
+
+# Time by neutropenia 
+p_time <- ggplot(data, aes(x = Neutro_f, y = Time)) +
+  geom_boxplot(fill = "white") +
+  labs(x = "Neutropenia", y = "Time to event (weeks)",
+       title = "Treatment Duration by Neutropenia Status") +
+  theme_pub
+print(p_time)
+
+print(wilcox.test(Time ~ Neutropenia, data = data))
+
+# Sex vs neutropenia (proportions)
+p_sex <- ggplot(data, aes(x = Sex_f, fill = Neutro_f)) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x = "Sex", y = "Proportion", fill = "Neutropenia", title = "Neutropenia by Sex") +
+  theme_pub
+print(p_sex)
+
+# ECOG vs neutropenia (proportions)
+p_ecog <- ggplot(data, aes(x = factor(ECOG_PS), fill = Neutro_f)) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x = "ECOG PS", y = "Proportion", fill = "Neutropenia", title = "Neutropenia by ECOG PS") +
+  theme_pub
+print(p_ecog)
+
+
+## ---- Event vs Neutropenia ----------------------------------
+# Mortality proportion + 95% CI by neutropenia status
+evt_summary <- data %>%
+  group_by(Neutropenia) %>%
+  summarise(
+    deaths = sum(Event), n = n(),
+    prop = deaths / n,
+    se = sqrt(prop * (1 - prop) / n),
+    lower = prop - 1.96 * se,
+    upper = prop + 1.96 * se,
+    .groups = "drop"
+  )
+
+p_mortality <- ggplot(evt_summary, aes(x = factor(Neutropenia), y = prop)) +
+  geom_point(size = 3, color = "firebrick") +
+  geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.1, color = "firebrick") +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x = "Neutropenia", y = "Mortality (%)",
+       title = "Mortality by Neutropenia Status") +
+  theme_pub
+print(p_mortality)
+
+# Quick association test (matches the figure)
+print(chisq.test(table(data$Neutropenia, data$Event)))
+
+## =========================================================
+## 2) Correlation Matrix (scatter lower, heatmap+numbers upper)
+## =========================================================
+num_vars <- na.omit(data[, c("Age","ECOG_PS","GFR","Time","Event","Neutropenia")])
+
+upper_cor_heat <- function(data, mapping, ...) {
+  x <- GGally::eval_data_col(data, mapping$x)
+  y <- GGally::eval_data_col(data, mapping$y)
+  r <- suppressWarnings(cor(x, y, use = "pairwise.complete.obs"))
+  ggplot() +
+    geom_tile(aes(x = 1, y = 1, fill = r)) +
+    scale_fill_gradient2(limits = c(-1, 1),
+                         low = "firebrick2", mid = "white", high = "steelblue3") +
+    geom_text(aes(x = 1, y = 1, label = sprintf("%.2f", r)), size = 4) +
+    theme_void() + theme(legend.position = "none")
+}
+
+p_pairs <- ggpairs(
+  num_vars,
+  lower = list(continuous = GGally::wrap("points", alpha = 0.35, size = 0.5)),
+  diag  = list(continuous = "densityDiag"),
+  upper = list(continuous = upper_cor_heat)
+) + theme_pub
+print(p_pairs)
+
+## =========================================================
+## 3) Logistic Regression
+## =========================================================
+fit <- glm(Neutropenia ~ Age + Sex + ECOG_PS + GFR + Time + Event,
+           data = data, family = binomial)
+print(summary(fit))
+
+# Odds ratios with 95% CI
+OR_tab <- exp(cbind(OR = coef(fit), confint(fit)))
+print(OR_tab)
+
+# Pseudo-R^2
+print(pR2(fit))
+
+# ROC & AUC
+roc_obj <- roc(response = data$Neutropenia, predictor = fitted(fit))
+print(auc(roc_obj))
+plot(roc_obj, col = "darkblue", lwd = 2, main = "ROC Curve — Neutropenia Model")
+abline(a = 0, b = 1, lty = 2, col = "gray")
+text(0.6, 0.2, paste("AUC =", round(auc(roc_obj), 3)), cex = 1.2)
+
+## =========================================================
+## 4) Model Visualizations
+## =========================================================
+# 4a) Predicted probability vs GFR
+data$pred <- fitted(fit)
+p_pred_gfr <- ggplot(data, aes(GFR, pred, color = Neutro_f)) +
+  geom_point(alpha = 0.6, size = 2) +
+  geom_smooth(method = "loess", se = TRUE, color = "black", linewidth = 1) +
+  scale_color_manual(values = c("steelblue","firebrick")) +
+  labs(x = "GFR (mL/min/1.73m²)", y = "Predicted probability of neutropenia",
+       color = "Neutropenia", title = "Predicted Probability vs GFR") +
+  theme_pub
+print(p_pred_gfr)
+
+# 4b) Forest plot of odds ratios
+fit_tidy <- tidy(fit, conf.int = TRUE, exponentiate = TRUE) %>%
+  filter(term != "(Intercept)") %>%
+  mutate(term = dplyr::recode(term,
+                              "Age" = "Age (per year)",
+                              "SexMale" = "Male (vs Female)",
+                              "ECOG_PS" = "ECOG PS (per unit)",
+                              "GFR" = "GFR (per mL/min)",
+                              "Time" = "Time (weeks)",
+                              "Event" = "Event (1 = death)"))
+
+p_forest <- ggplot(fit_tidy, aes(x = reorder(term, estimate), y = estimate)) +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "gray40") +
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0.1) +
+  geom_point(size = 3, color = "firebrick") +
+  coord_flip() +
+  labs(x = NULL, y = "Odds Ratio (95% CI)",
+       title = "Factors Associated with Neutropenia (Logistic Regression)") +
+  theme_pub
+print(p_forest)
+
+# 4c) Calibration Plot
+
+data <- data %>%
+  mutate(pred_prob = fitted(fit),
+         bin = ntile(pred_prob, 10))
+
+calib_data <- data %>%
+  group_by(bin) %>%
+  summarise(mean_pred = mean(pred_prob),
+            obs_rate  = mean(Neutropenia),
+            .groups = "drop")
+
+ggplot(calib_data, aes(mean_pred, obs_rate)) +
+  geom_abline(linetype = "dashed", color = "gray40") +
+  geom_line(color = "firebrick") +
+  geom_point(size = 3, color = "firebrick") +
+  coord_equal(xlim = c(0,1), ylim = c(0,1)) +
+  labs(x = "Mean predicted probability",
+       y = "Observed proportion of neutropenia",
+       title = "Calibration Plot — Logistic Model") +
+  theme_bw(base_size = 12)
+
+
+# 4d) Hosmer–Lemeshow
+
+library(ResourceSelection)
+hl <- hoslem.test(data$Neutropenia, fitted(fit), g = 10)
+
+# Brier score
+brier <- mean( (data$Neutropenia - fitted(fit))^2 )
+
+print(hl); print(brier)
