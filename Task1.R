@@ -9,6 +9,7 @@ library(performance)
 library(effects)
 library(car)
 library(dplyr)
+library(ggeffects)
 
 # Load data 
 data <- read.csv("data/Data_T1.csv")
@@ -195,6 +196,10 @@ summary(poisson_glmm)
 #_________________________________________________________________________________________
 
 
+
+
+
+
 #________________MODEL PERFORMANCE COMPARISON__________________________________________
 #######################################################################################
 cat("\n  MODEL COMPARISON \n")
@@ -224,9 +229,9 @@ res3 <- simulateResiduals(poisson_glmm)
 
 # Plotting DHARMa residuals
 par(mfrow = c(3, 2))
-plot(res1, main = "DHARMa - Initial Poisson")
-plot(res2, main = "DHARMa - Poisson with Interaction")
-plot(res3, main = "DHARMa - Poisson GLMM")
+plot(res1)
+plot(res2)
+plot(res3)
 par(mfrow = c(1, 1))
 
 # Test zero inflation ("when model says there is too many zeros")
@@ -242,7 +247,7 @@ testZeroInflation(res3)
 # _______________________CHOSEN MODEL_______________________________________________
 ######################################################################################
 # Based on lowest AIC and best residual diagnostics, Poisson GLMM was chosen as final model
-finalModel <- poisson_glmm
+finalModel <- poisson_int
 ######################################################################################
 
 
@@ -251,20 +256,14 @@ finalModel <- poisson_glmm
 #_________________ INTERPRETATION OF CHOSEN MODEL _____________________________
 #####################################################################################
 
-# IRR (Incident )
-# We do this since Poission regression model has the coeff. in log-scale 
+# IRR (Incidence Rate Ratio)
+# Extract coefficients
+irr <- exp(coef(poisson_model))
 
-#        If IRR>1    <-- indicates increased risk
-#        If IRR<1    <-- indicates protective effect 
+# Confidence intervals for coefficients
+irr_ci <- exp(confint(poisson_model))
 
-
-# Extract fixed effects only    <-- (Since glmm has both fixed and random effects)
-irr <- exp(fixef(poisson_glmm))
-
-# Confidence intervals for fixed effects only
-# beta and Wald helps only using the fixed effects
-irr_ci <- exp(confint(poisson_glmm, parm = "beta_", method = "Wald"))
-
+# Create results table
 results_table <- data.frame(
   Variable = names(irr),
   IRR = round(irr, 3),
@@ -310,8 +309,8 @@ newdata_age <- data %>%
     CLIstd = mean(CLIstd),
     SmokingPrevalence = mean(SmokingPrevalence),
     BMImedian = mean(BMImedian),
-    Sex = "Male",
-    Region = "Region1",
+    Sex = "Female",
+    Region = "Region5",
     logPopulation = mean(logPopulation)
   )
 
@@ -321,45 +320,62 @@ ggplot(newdata_age, aes(x = AgeGroup, y = pred)) +
   geom_col(fill = "steelblue") +
   labs(title = "Predicted Pancreatic Cancer Cases by Age Group",
        y = "Predicted Cases (per stratum)") +
+  ylim(0, 30) +
   theme_minimal()
 
 
 # Predicted incidence VS CLIstd
-new_cli <- data.frame(
-  CLIstd = seq(min(data$CLIstd), max(data$CLIstd), length = 100),
+df <- ggpredict(finalModel, terms = "CLIstd")
+plot(df)
+
+
+
+# Predict across CLIstd, at low, medium, and high smoking prevalence
+df <- ggpredict(finalModel, terms = c("CLIstd [all]", "SmokingPrevalence [0.25,0.5,0.75]"))
+
+library(ggplot2)
+
+ggplot(df, aes(x = x, y = predicted, color = group)) +
+  geom_line(size = 1.2) +
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high, fill = group), alpha = 0.2) +
+  labs(
+    x = "CLIstd",
+    y = "Predicted Cases",
+    color = "Smoking Prevalence \n Quantile",
+    fill = "Smoking Prevalence \n Quantile",
+    title = "Predicted Cases by CLIstd and Smoking Prevalence"
+  ) +
+  theme_minimal()
+
+
+
+# Fine grid for CLIstd and BMI
+cli_seq <- seq(min(data$CLIstd), max(data$CLIstd), length.out = 100)
+bmi_seq <- seq(min(data$BMImedian), max(data$BMImedian), length.out = 50)
+
+newdata <- expand.grid(
+  CLIstd = cli_seq,
+  BMImedian = bmi_seq,
   SmokingPrevalence = mean(data$SmokingPrevalence),
-  BMImedian = mean(data$BMImedian),
-  Sex = "Male",
-  AgeGroup = "40-59",
-  Region = "Region1",
+  Sex = "Female",
+  AgeGroup = "60-79",
+  Region = "Region2",
   logPopulation = mean(data$logPopulation)
 )
 
-new_cli$pred <- predict(finalModel, newdata = new_cli, type="response")
+# Predict
+newdata$pred <- predict(finalModel, newdata = newdata, type = "response")
 
-ggplot(new_cli, aes(x = CLIstd, y = pred)) +
-  geom_line(size = 1.2, color = "darkgreen") +
-  labs(title = "Predicted Cancer Cases vs. Lifestyle Index (CLIstd)",
-       y = "Predicted Cases") +
+# Heatmap
+ggplot(newdata, aes(x = CLIstd, y = BMImedian, fill = pred)) +
+  geom_tile() +
+  scale_fill_viridis_c(option = "D") +
+  labs(
+    x = "CLIstd",
+    y = "BMI Median",
+    fill = "Predicted Cases",
+    title = "Predicted Cases by CLIstd and BMI Median"
+  ) +
   theme_minimal()
 
-# Forest plot of final model IRR
-irr <- exp(fixef(finalModel))
-irr_ci <- exp(confint(finalModel, parm = "beta_", method = "Wald"))
-
-irr_df <- data.frame(
-  Variable = names(irr),
-  IRR = irr,
-  Lower = irr_ci[,1],
-  Upper = irr_ci[,2]
-)
-
-ggplot(irr_df, aes(x = reorder(Variable, IRR), y = IRR)) +
-  geom_pointrange(aes(ymin = Lower, ymax = Upper)) +
-  geom_hline(yintercept = 1, linetype = "dashed", color = "red") +
-  coord_flip() +
-  labs(title = "Incidence Rate Ratios (IRR) of Final Model",
-       y = "IRR (log scale)") +
-  scale_y_log10() +
-  theme_minimal()
 
