@@ -2,6 +2,14 @@ library(visdat)
 library(ggplot2)
 library(GGally)
 library(corrplot)
+library(MASS)
+library(lme4)
+library(DHARMa)
+library(performance)
+library(effects)
+library(car)
+library(dplyr)
+library(ggeffects)
 
 data <- read.csv("data/Data_T1.csv")
 
@@ -99,18 +107,6 @@ corrplot(cor_data, addCoef.col = "black")
 # Smoking and BMI is slightly positively correlated to incidence rate, meaning smoking and higher BMI = higher risk for cancer
 
 
-###########################################################################################################################################
-
-# TASK 1 - PART 2 ____________________________________________________________________
-
-# Load additional required packages
-library(MASS)
-library(lme4)
-library(DHARMa)
-library(performance)
-library(effects)
-
-
 # __________________ MAKING THE MODEL _______________________________________________
 #####################################################################################
 
@@ -118,40 +114,161 @@ library(effects)
 # we should use an offset for population size to handle differences 
 data$logPopulation <- log(data$Npopulation)
 
-# Initial Poisson model (also since we have count data)
+
+#__________________STRUCTURE OF MODEL MAKING__________________________________________
+
+# 1. Count data makes Poisson model suitable. We use glm and glmer for creating models
+#    since data is not normal nor continuous (Generalised Linear Model)
+#    We explore what Poisson model fits the best:
+
+          #  Poisson                            (initial model with independent effects)   <-- (Fixed effects)
+          #  Poisson with interactions          (combining for ex. CLIstd and sex)         <-- (Fixed effects)
+          #  Poisson with random effects        (good with clustered structured data)      <-- (Mixed effects)
+
+# 2. We we check for multicollinearity through VIFs (Variance Inflation Factors) after
+#    the first initial model is made to see if model needs adjustment 
+
+#    If : VIF < 3         No problem    
+#         VIF = (3-5)     Moderate correlation
+#         VIF > (5-10)    Problematic (consider dropping variable)
+
+# 3. Each model performance will be evaluated through:
+
+          # Dispersion 
+          # AIC
+          # Likelihood ratio 
+          # Residual analysis
+
+# 4. Best fitted model will be chosen for final conclusions and visualizations
+#________________________________________________________________________________________
+
+
+
+# INITIAL POISSON MODEL 
+#________________________________________________________________________________________
 poisson_model <- glm(NewCases ~ Region + AgeGroup + Sex + CLIstd + 
                        SmokingPrevalence + BMImedian + offset(logPopulation),
                      family = poisson(link = "log"),
                      data = data)
 
+cat("\n MODEL 1: INITIAL POISSON MODEL  \n")
 summary(poisson_model)
 
-# Check for overdispersion
-dispersion_test <- sum(residuals(poisson_model, type = "pearson")^2) / 
-  df.residual(poisson_model)
-dispersion_test
 
-# RESULT : Dispersion = 1.039291 which is <1,5 so its okay
-# (If we were to have a dispersion we could use Negative Binomial) 
+# Checking dispersion
+disp1   <- sum(residuals(poisson_model, type = "pearson")^2)/df.residual(poisson_model)
+cat("Dispersion: ", round(disp1,3), "\n")
 
-
-# Model diagnostics using DHARMa
-sim_res <- simulateResiduals(poisson_model)
-plot(sim_res)
-
-# Check indices of model performance 
-model_performance <- performance::model_performance(poisson_model)
-print(model_performance)
+# CHECKING FOR MULTICOLLINEARITY
+#--------------------------------
+cat("\n CHECKING FOR MULTICOLLINEARITY IN INITIAL MODEL \n")
+vif_initialModel <- vif(poisson_model)
+print(vif_initialModel)
+#_________________________________________________________________________________________
 
 
-#_________________ MODEL INTERPRETATION _____________________________________________
+
+# POISSON MODEL WITH INTERACTIONS (CLIstd, SEX, AND AGE)
+#_________________________________________________________________________________________
+poisson_int <- glm(NewCases ~ Region + AgeGroup*CLIstd + Sex*CLIstd + 
+                     SmokingPrevalence + BMImedian + offset(logPopulation),
+                   family = poisson(link = "log"), data = data)
+
+cat("\n MODEL 2: POISSON MODEL WITH INTERACTIONS  \n")
+summary(poisson_int)
+
+
+# Checking dispersion
+disp2   <- sum(residuals(poisson_int, type = "pearson")^2)/df.residual(poisson_int)
+cat("Dispersion: ", round(disp2,3), "\n")
+#________________________________________________________________________________________
+
+
+
+
+# POISSON MIXED EFFECT MODEL (RANDOM INTERCEPT BY REGION)
+#________________________________________________________________________________________
+poisson_glmm <- glmer(NewCases ~ AgeGroup + Sex + CLIstd + SmokingPrevalence +
+                        BMImedian + offset(logPopulation) + (1 | Region), 
+                      family = poisson(link = "log"), data = data)
+
+cat("\n MODEL 3: POISSON MIXED EFFECTS MODEL  \n")
+summary(poisson_glmm)
+
+# Dispersion cant be looked at in mixed effect models since variance is composed of 
+# two parts. Second variance comes from random effect of Region which adds variability 
+# across clusters.
+#_________________________________________________________________________________________
+
+
+
+
+
+
+#________________MODEL PERFORMANCE COMPARISON__________________________________________
+#######################################################################################
+cat("\n  MODEL COMPARISON \n")
+
+# Compare AICs
+model_compare <- data.frame(             # Using data.frame to get table
+  Model = c(" Initial Poisson", "Poisson interactions", "Poisson GLMM"),
+  AIC = c(AIC(poisson_model), AIC(poisson_int), AIC(poisson_glmm))
+)
+print(model_compare)
+
+
+# Compare Likelihood ratio tests (OBS! Only for fixed effect glms)
+cat("\n  Likelihood Ratio Tests \n")
+cat("\n  OBS! Only on fixed effect glm´s (poisson_model and poisson_int")
+anova(poisson_model, poisson_int, test = "Chisq")
+
+
+# (R^2 value comparison is skipped due to glms models having pure R^2,
+# while glmm has the pseudo R^2.)
+
+
+# Compare DHARMa residuals
+res1 <- simulateResiduals(poisson_model)
+res2 <- simulateResiduals(poisson_int)
+res3 <- simulateResiduals(poisson_glmm)
+
+# Plotting DHARMa residuals
+par(mfrow = c(3, 2))
+plot(res1)
+plot(res2)
+plot(res3)
+par(mfrow = c(1, 1))
+
+# Test zero inflation ("when model says there is too many zeros")
+
+#               If p<0.05  --> too many zeros --> zero inflated
+#               If p>0.05  --> no zero inflation
+
+testZeroInflation(res1)
+testZeroInflation(res2)
+testZeroInflation(res3)
+
+
+# _______________________CHOSEN MODEL_______________________________________________
+######################################################################################
+# Based on lowest AIC and best residual diagnostics, Poisson GLMM was chosen as final model
+finalModel <- poisson_int
+######################################################################################
+
+
+
+
+#_________________ INTERPRETATION OF CHOSEN MODEL _____________________________
 #####################################################################################
 
-# Exponentiate coefficients to get Incidence Rate Ratios (IRR)
-# We do this since Poission regression model has the coeff. in log-scale 
+# IRR (Incidence Rate Ratio)
+# Extract coefficients
 irr <- exp(coef(poisson_model))
+
+# Confidence intervals for coefficients
 irr_ci <- exp(confint(poisson_model))
 
+# Create results table
 results_table <- data.frame(
   Variable = names(irr),
   IRR = round(irr, 3),
@@ -161,122 +278,110 @@ results_table <- data.frame(
 
 print(results_table)
 
-### Where IRR>1 indicates increased risk and IRR<1 indicates protective effect 
 
 
-#________________REGIONAL AND DEMOGRAPHICS ANALYSIS__________________________________
-#####################################################################################
-
-# Regional comparisons
-regional_effects <- results_table[grep("Region", results_table$Variable),]
-print("Regional Effects (compared to Region1):")
-print(regional_effects)
-
-# Age group effects
-age_effects <- results_table[grep("AgeGroup", results_table$Variable),]
-print("Age Group Effects (compared to 20-39):")
-print(age_effects)
-
-# Sex effect
-sex_effect <- results_table[grep("Sex", results_table$Variable),]
-print("Sex Effect (compared to Male):")
-print(sex_effect)
-
-
-#______________________LIFESTYLE FACTOR ANALYSIS____________________________________
-####################################################################################
-
-# Lifestyle factors impact
-lifestyle_effects <- results_table[c("CLIstd", "SmokingPrevalence", "BMImedian"),]
-print("Lifestyle Factor Effects:")
-print(lifestyle_effects)
-
-# Interpret lifestyle factors
-cat("\n=== LIFESTYLE FACTOR INTERPRETATION ===\n")
-cat("CLIstd (Composite Lifestyle Index):", 
-    ifelse(lifestyle_effects["CLIstd", "IRR"] < 1, 
-           "Protective effect - healthier lifestyle reduces cancer risk",
-           "Risk factor - unhealthy lifestyle increases cancer risk"), "\n")
-
-cat("SmokingPrevalence:", 
-    ifelse(lifestyle_effects["SmokingPrevalence", "IRR"] > 1, 
-           "Risk factor - smoking increases cancer risk",
-           "No significant risk or protective effect"), "\n")
-
-cat("BMImedian:", 
-    ifelse(lifestyle_effects["BMImedian", "IRR"] > 1, 
-           "Risk factor - higher BMI increases cancer risk",
-           "No significant risk or protective effect"), "\n")
-
-
-#________________MODEL GOODNESS-OF-FIT (VALIDATION)________________________________
-###################################################################################
-
-# Residual analysis
-par(mfrow = c(2, 2))  # Create a 2x2 grid for plots
-plot(poisson_model)      # Generate 4 diagnostic plots
-par(mfrow = c(1, 1))   # Reset to single plot layout
-
-# Check for influential points
-# We use Cook's distance for measuring observations that have unusual  
-# influence of the model
-influence_plot <- plot(poisson_model, which = 4)  
-
-
-# Cook's distance > 1 is generally concerning
-# Cook's distance > 4/(n-p) is often used as a threshold
-n <- nrow(data)
-p <- length(coef(poisson_model))
-cooks_threshold <- 4/(n - p)
-
-cat("Cook's distance threshold:", round(cooks_threshold, 3), "\n")
-cat("Any points above this may be overly influential\n")
-
-# Likelihood ratio test for model significance
-# We compare full model (with all predictors) with 
-# null model (intercept + offset)
-null_model <- update(poisson_model, . ~ 1 + offset(logPopulation))
-lr_test <- anova(null_model, poisson_model, test = "Chisq")
-print("Likelihood Ratio Test:")
-print(lr_test)
-
-
-# Pseudo R-squared (just like R-squared in linear regression)
-pseudo_r2 <- 1 - (poisson_model$deviance / poisson_model$null.deviance)
-cat("Pseudo R-squared:", round(pseudo_r2, 3), "\n")
 
 
 #___________________VISUALISATION OF MODEL RESULTS__________________________________
 ####################################################################################
 
-# Plot predicted VS observed
-predicted <- predict(poisson_model, type = "response")
-observed <- data$NewCases
 
-plot(observed, predicted, 
-     xlab = "Observed Cases", ylab = "Predicted Cases",
-     main = "Predicted vs Observed Cases",
-     pch = 16, col = "blue")
-abline(0, 1, col = "red", lwd = 2)
+# Effect plot 
+plot(allEffects(finalModel))
 
-# Plot effects
-model_effects <- allEffects(poisson_model)
-plot(model_effects)
 
-# Create a summary plot of key risk factors
-key_factors <- lifestyle_effects
-key_factors$Factor <- rownames(key_factors)
+# Predicted VS Observed cases
+pred <- predict(finalModel, type = "response")
+obs  <- data$NewCases
 
-ggplot(key_factors, aes(x = Factor, y = IRR, ymin = Lower_CI, ymax = Upper_CI)) +
-  geom_pointrange() +
-  geom_hline(yintercept = 1, linetype = "dashed", color = "red") +
-  labs(title = "Risk Factors for Pancreatic Cancer",
-       subtitle = "Incidence Rate Ratios with 95% Confidence Intervals",
-       y = "Incidence Rate Ratio (IRR)",
-       x = "Risk Factor") +
-  theme_minimal() +
-  coord_flip()
+ggplot(data, aes(x = obs, y = pred)) +
+  geom_point(alpha = 0.7) +
+  geom_abline(intercept = 0, slope = 1, color = "red", lwd = 1.2) +
+  labs(title = "Observed vs Predicted Counts",
+       x = "Observed cases",
+       y = "Predicted cases") +
+  theme_minimal()
 
+# DHARMa residuals plot again for final model
+res_final <- simulateResiduals(finalModel)
+plot(res_final)
+
+# Predicted incidence by age group
+# Change Sex and Region for all plots OBS!
+newdata_age <- data %>% 
+  group_by(AgeGroup) %>% 
+  summarize(
+    CLIstd = mean(CLIstd),
+    SmokingPrevalence = mean(SmokingPrevalence),
+    BMImedian = mean(BMImedian),
+    Sex = "Female",
+    Region = "Region5",
+    logPopulation = mean(logPopulation)
+  )
+
+newdata_age$pred <- predict(finalModel, newdata = newdata_age, type = "response")
+
+ggplot(newdata_age, aes(x = AgeGroup, y = pred)) +
+  geom_col(fill = "steelblue") +
+  labs(title = "Predicted Pancreatic Cancer Cases by Age Group",
+       y = "Predicted Cases (per stratum)") +
+  ylim(0, 30) +
+  theme_minimal()
+
+
+# Predicted incidence VS CLIstd
+df <- ggpredict(finalModel, terms = "CLIstd")
+plot(df)
+
+
+
+# Predict across CLIstd, at low, medium, and high smoking prevalence
+df <- ggpredict(finalModel, terms = c("CLIstd [all]", "SmokingPrevalence [0.25,0.5,0.75]"))
+
+library(ggplot2)
+
+ggplot(df, aes(x = x, y = predicted, color = group)) +
+  geom_line(size = 1.2) +
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high, fill = group), alpha = 0.2) +
+  labs(
+    x = "CLIstd",
+    y = "Predicted Cases",
+    color = "Smoking Prevalence \n Quantile",
+    fill = "Smoking Prevalence \n Quantile",
+    title = "Predicted Cases by CLIstd and Smoking Prevalence"
+  ) +
+  theme_minimal()
+
+
+
+# Fine grid for CLIstd and BMI
+cli_seq <- seq(min(data$CLIstd), max(data$CLIstd), length.out = 100)
+bmi_seq <- seq(min(data$BMImedian), max(data$BMImedian), length.out = 50)
+
+newdata <- expand.grid(
+  CLIstd = cli_seq,
+  BMImedian = bmi_seq,
+  SmokingPrevalence = mean(data$SmokingPrevalence),
+  Sex = "Female",
+  AgeGroup = "60-79",
+  Region = "Region2",
+  logPopulation = mean(data$logPopulation)
+)
+
+# Predict
+newdata$pred <- predict(finalModel, newdata = newdata, type = "response")
+
+# Heatmap
+ggplot(newdata, aes(x = CLIstd, y = BMImedian, fill = pred)) +
+  geom_tile() +
+  scale_fill_viridis_c(option = "D") +
+  labs(
+    x = "CLIstd",
+    y = "BMI Median",
+    fill = "Predicted Cases",
+    title = "Predicted Cases by CLIstd and BMI Median"
+  ) +
+  theme_minimal()
 
 
 
