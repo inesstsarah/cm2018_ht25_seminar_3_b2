@@ -28,12 +28,13 @@ data_3 <- read_csv("Data_T3.csv", show_col_types = FALSE)
 data_3 <- data_3[,-1]
 
 # Get numerical and categorical data
-data_3_num <- data_3[sapply(data_3, is.numeric)]
-data_3_cat <- data_3[!sapply(data_3, is.numeric)]
+data_3_num <- data_3[, c(1,3,6,7,8)]
+data_3_cat <- data_3[, c(2,4,5)]
 
 # Convert categorical variables to numeric (0/1)
-data_3$TreatmentGroup <- ifelse(data_3$TreatmentGroup == "Treatment", 1, 0)
-data_3$Sex <- ifelse(data_3$Sex == "Female", 1, 0)
+data_3_mod <- data_3
+data_3_mod$TreatmentGroup <- ifelse(data_3$TreatmentGroup == "Treatment", 1, 0)
+data_3_mod$Sex <- ifelse(data_3$Sex == "Female", 1, 0)
 
 
 # === MISSING DATA =============================================================
@@ -59,7 +60,7 @@ data_3 %>%
 
 # --- Bar plots for categorical variables (TreatmentGroup, Sex, ECOG_PS) -------
 
-data_3 %>%
+data_3_mod %>%
   pivot_longer(cols = c(TreatmentGroup, Sex, ECOG_PS),
                names_to = "variable",
                values_to = "value") %>%
@@ -75,7 +76,7 @@ par(mfrow = c(1, 2))
 
 # Age by treatment group
 boxplot(Age ~ TreatmentGroup, 
-        data = data_3,
+        data = data_3_mod,
         col = c("lightblue", "lightgreen"),
         xlab = "Treatment Group",
         ylab = "Age (years)",
@@ -83,11 +84,32 @@ boxplot(Age ~ TreatmentGroup,
 
 # GFR by treatment group
 boxplot(GFR ~ TreatmentGroup, 
-        data = data_3,
+        data = data_3_mod,
         col = c("lightblue", "lightgreen"),
         xlab = "Treatment Group",
         ylab = "GFR (mL/min/1.73m²)",
         main = "GFR Distribution by Treatment Group")
+
+
+
+# Compare baseline covariates by TreatmentGroup (simple plots)
+# Age and GFR by treatment
+data_3 %>%
+  ggplot(aes(x = TreatmentGroup, y = Age)) +
+  geom_boxplot() +
+  theme_bw()
+
+data_3 %>%
+  ggplot(aes(x = TreatmentGroup, y = GFR)) +
+  geom_boxplot() +
+  theme_bw()
+
+# ECOG distribution by treatment
+data_3 %>%
+  ggplot(aes(x = ECOG_PS, fill = TreatmentGroup)) +
+  geom_bar(position = "fill") +
+  ylab("Proportion") +
+  theme_bw()
 
 
 # === Covariance and Correlation matrices ======================================
@@ -119,7 +141,7 @@ boxplot(GFR ~ TreatmentGroup,
 # Set layout: 1 row, 2 columns
 par(mfrow = c(1, 2))
 
-# === Covariance matrix plot =======================================
+# === Covariance matrix plot ===================================================
 cov_mat <- cov(data_3_num)
 
 corrplot(cov_mat,
@@ -133,7 +155,7 @@ corrplot(cov_mat,
          title       = "Covariance matrix of independent variables",
          mar         = c(0,0,2,0))
 
-# === Correlation matrix plot =======================================
+# === Correlation matrix plot ==================================================
 cor_mat <- cor(data_3_num, use = "pairwise.complete.obs")
 
 corrplot(cor_mat,
@@ -153,43 +175,161 @@ corrplot(cor_mat,
 
 
 
+# === Relationship between continuous variables  ===============================
 
-
-# --- Relationship between continuous variables ------------------------------------------------
+# --- Age vs GFR ---------------------------------------------------------------
 
 # The plot shows a very weak positive relationship between age and GFR in both 
 # groups. The treatment and control lines almost overlap, indicating no 
 # meaningful difference between groups and only a minimal age effect on GFR.
+data_3$TreatmentGroup <- factor(data_3$TreatmentGroup)
+
+# Linear
 ggplot(data_3, aes(x = Age, y = GFR, color = TreatmentGroup)) +
   geom_point(size = 2) +
   geom_smooth(method = "lm", se = FALSE) +
   theme_minimal() +
   labs(title = "Relationship between Age and GFR by Treatment Group")
 
+# Nonlinear
+ggplot(data_3, aes(x = Age, y = GFR, colour = TreatmentGroup)) +
+  geom_point(alpha = 0.7, size = 2) +
+  geom_smooth(method = "loess", se = TRUE) +
+  labs(
+    title  = "Relationship Between Age and GFR by Treatment Group",
+    x      = "Age (years)",
+    y      = "GFR (mL/min/1.73m²)",
+    color  = "Treatment group"
+  ) +
+  theme_bw()
+
+# --- Time vs GFR --------------------------------------------------------------
 
 # The plot shows that GFR increases slightly with time in both groups. The 
 # treatment group has a slightly steeper upward trend, but the two groups 
 # overlap heavily, suggesting no meaningful difference.<
+data_3$TreatmentGroup <- factor(data_3$TreatmentGroup)
+
+# Linear
 ggplot(data_3, aes(x = Time, y = GFR, color = TreatmentGroup)) +
   geom_point(size = 2) +
   geom_smooth(method = "lm", se = FALSE) +
   theme_minimal() +
-  labs(title = "Relationship between Time and GFR by Treatment Group")
+  labs(title = "Linear GFR over Time by Treatment Group")
+
+# Nonlinear
+ggplot(data_3, aes(x = Time, y = GFR, colour = TreatmentGroup)) +
+  geom_point(alpha = 0.6,
+             position = position_jitter(width = 0, height = 0.5)) +
+  geom_smooth(method = "loess", se = TRUE) +
+  labs(
+    title  = "Nonlinear GFR over Time by Treatment Group",
+    x      = "Time (weeks)",
+    y      = "GFR (mL/min/1.73m²)",
+    color  = "Treatment group"
+  ) +
+  theme_bw()
 
 
-# --- Visualize survival time by treatment and event ---------------------------
+# --- ECOG Performance Status over Time ----------------------------------------
 
+# Make sure TreatmentGroup is a factor
+data_3$TreatmentGroup <- factor(data_3$TreatmentGroup)
+
+ggplot(data_3, aes(x = Time, y = ECOG_PS, colour = TreatmentGroup)) +
+  geom_point(alpha = 0.6, 
+             position = position_jitter(width = 0, height = 0.05)) +  # spread points a bit
+  geom_smooth(method = "loess", se = TRUE) +                          # trend per group
+  scale_y_continuous(breaks = 0:3) +                                  # ECOG is discrete
+  labs(
+    title = "ECOG Performance Status over Time",
+    x     = "Time (weeks)",
+    y     = "ECOG PS",
+    colour = "Treatment group"
+  ) +
+  theme_bw()
+
+
+
+# === Kaplan–Meier curves & log-rank test ======================================
+
+
+# --- Cumulative number of deceased over time ----------------------------------
+
+# Survival object
 surv_object <- Surv(time = data_3$Time, event = data_3$Event)
-fit <- survfit(surv_object ~ TreatmentGroup, data = data_3)
 
-ggsurvplot(fit, data = data_3,
-           pval = TRUE,
-           risk.table = TRUE,
-           title = "Survival Curves by Treatment Group",
-           xlab = "Time (weeks)", ylab = "Survival Probability")
+# Fit KM curves by TreatmentGroup
+fit_KM <- survfit(surv_object ~ TreatmentGroup, data = data_3)
+
+p_KM <- ggsurvplot(
+  fit_KM,
+  data        = data_3,
+  risk.table  = TRUE,
+  pval        = TRUE,
+  conf.int    = TRUE,
+  legend.title = "Group",
+  legend.labs  = levels(data_3$TreatmentGroup),
+  title       = "Survival and Cumulative Deaths by Treatment Group",
+  xlab        = "Time (weeks)",
+  ylab        = "Survival probability",
+  ggtheme     = theme_bw()
+)
+
+# --- By treatment group, compute cumulative number of deaths over time. -------
+deaths_cum <- data_3 %>%
+  filter(Event == 1) %>%                 # only those who died
+  arrange(Time) %>%                      # order by time
+  group_by(TreatmentGroup) %>%           # per treatment group
+  mutate(CumDeaths = row_number())       # cumulative count within group
+
+# Overall maximum number of deaths (for scaling)
+max_deaths_all <- max(deaths_cum$CumDeaths)
+
+# Scale cumulative deaths to [0, 1] so they can be overlaid on survival axis
+deaths_cum <- deaths_cum %>%
+  mutate(CumDeaths_scaled = CumDeaths / max_deaths_all)
+
+# Add cumulative deaths as dashed steps to the KM plot, with a secondary y-axis.
+p_KM$plot <- p_KM$plot +
+  geom_step(
+    data = deaths_cum,
+    aes(x = Time, y = CumDeaths_scaled, color = TreatmentGroup),
+    linetype = "dashed"
+  ) +
+  scale_y_continuous(
+    name = "Survival probability",
+    sec.axis = sec_axis(
+      ~ . * max_deaths_all,
+      name = "Cumulative number of deaths"
+    )
+  )
+
+# Explicit log-rank test (same p-value as above)
+survdiff(surv_object ~ TreatmentGroup, data = data_3)
 
 
-# --- Statistical tests --------------------------------------------------------
+# === Cox proportional hazards models ==========================================
+
+cox_crude <- coxph(Surv(Time, Event) ~ TreatmentGroup, data = data_3)
+summary(cox_crude)
+
+# Extract hazard ratio and 95% CI
+exp(cbind(HR = coef(cox_crude), confint(cox_crude)))
+
+# Adjusted model: Treatment + covariates
+cox_adj <- coxph(
+  Surv(Time, Event) ~ TreatmentGroup + Age + Sex + ECOG_PS + GFR,
+  data = data_3
+)
+
+summary(cox_adj)
+
+# Hazard ratios with 95% CI
+exp(cbind(HR = coef(cox_adj), confint(cox_adj)))
+
+
+# === Statistical tests ========================================================
 
 # Statistical test for treatment effect on GFR e.g., independent t-test or 
 # ANCOVA (adjusting for Age, ECOG_PS, etc.)
@@ -207,148 +347,3 @@ t.test(GFR ~ TreatmentGroup, data = data_3)
 # measured by GFR, did not differ by sex in this cohort of pancreatic cancer 
 # patients.
 t.test(GFR ~ Sex, data = data_3)
-
-
-# --- Multiple linear regression (GFR ~ predictors) ----------------------------
-# To quantify how treatment, age, and performance status jointly affect kidney function.
-lm_gfr <- lm(GFR ~ TreatmentGroup + Age + ECOG_PS, data = data_3)
-summary(lm_gfr)
-
-
-
-
-
-# --- Multiple linear regression: GFR as outcome ------------------------------
-
-# 1) Prep & fit an MLR
-
-#install.packages(("ggfortify", "ggeffects")) # if needed
-library(broom)       # tidy(), augment(), glance()
-library(car)         # avPlots(), vif()
-library(ggeffects)   # ggpredict() for marginal effects
-library(ggfortify)   # autoplot() diagnostics
-
-data_3 <- data_3 %>%
-  mutate(
-    TreatmentGroup = factor(TreatmentGroup),
-    ECOG_PS = factor(ECOG_PS)   # treat as factor; drop this line to keep numeric
-  )
-
-# Fit model (interaction Age*TreatmentGroup)
-lm_gfr <- lm(GFR ~ Age * TreatmentGroup + ECOG_PS, data = data_3)
-
-summary(lm_gfr)
-vif(lm_gfr)  # quick multicollinearity check
-
-
-# 2) Coefficient plot (with 95% CI)
-
-coef_df <- broom::tidy(lm_gfr, conf.int = TRUE)
-
-ggplot(coef_df %>% filter(term != "(Intercept)"),
-       aes(x = reorder(term, estimate), y = estimate)) +
-  geom_point() +
-  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0.15) +
-  coord_flip() +
-  theme_minimal() +
-  labs(title = "Multiple Linear Regression on GFR",
-       x = "", y = "Coefficient (with 95% CI)")
-
-
-# 4) Actual vs. fitted (goodness-of-fit view)
-
-aug <- broom::augment(lm_gfr)
-
-ggplot(aug, aes(.fitted, GFR, color = TreatmentGroup)) +
-  geom_point(alpha = 0.7) +
-  geom_abline(intercept = 0, slope = 1, linetype = 2) +
-  theme_minimal() +
-  labs(title = "Observed vs Fitted GFR", x = "Fitted GFR", y = "Observed GFR")
-
-
-
-# Signed correlations including binary 0/1 vars
-corr_vars <- data_3_mod %>% dplyr::select(where(is.numeric))  # includes your 0/1 binaries
-cor_mat_signed <- cor(corr_vars, use = "pairwise.complete.obs")
-
-corrplot(cor_mat_signed,
-         method = "circle",
-         type   = "upper",
-         col    = colorRampPalette(c("red","white","blue"))(200),
-         tl.col = "black",
-         tl.srt = 45,
-         title  = "Pearson correlations (numeric + binary 0/1)")
-
-
-
-install.packages("DescTools") # if needed
-library(DescTools)
-library(dplyr)
-
-df <- data_3  # use the original with categoricals intact
-num_vars <- names(df)[sapply(df, is.numeric)]
-cat_vars <- setdiff(names(df), num_vars)
-
-# Helper: correlation ratio (eta^2) for numeric ~ categorical
-eta2_num_cat <- function(x, g) {
-  ok <- complete.cases(x, g)
-  x <- x[ok]; g <- as.factor(g[ok])
-  grand_mean <- mean(x)
-  ss_total <- sum((x - grand_mean)^2)
-  ss_between <- sum(tapply(x, g, function(v) length(v) * (mean(v) - grand_mean)^2))
-  if (ss_total == 0) return(NA_real_)
-  ss_between / ss_total  # eta^2 in [0,1]
-}
-
-vars <- names(df)
-M <- matrix(NA_real_, nrow = length(vars), ncol = length(vars),
-            dimnames = list(vars, vars))
-
-for (i in seq_along(vars)) {
-  for (j in seq_along(vars)) {
-    vi <- df[[vars[i]]]
-    vj <- df[[vars[j]]]
-    
-    if (i == j) {
-      M[i, j] <- 1
-      next
-    }
-    
-    ni <- is.numeric(vi)
-    nj <- is.numeric(vj)
-    
-    if (ni && nj) {
-      # numeric-numeric: absolute Pearson (strength)
-      M[i, j] <- abs(suppressWarnings(cor(vi, vj, use = "pairwise.complete.obs")))
-    } else if (ni && !nj) {
-      # numeric ~ categorical: eta^2
-      M[i, j] <- eta2_num_cat(vi, vj)
-    } else if (!ni && nj) {
-      # numeric ~ categorical (symmetric)
-      M[i, j] <- eta2_num_cat(vj, vi)
-    } else {
-      # categorical-categorical: Cramér's V
-      ok <- complete.cases(vi, vj)
-      tab <- table(vi[ok], vj[ok])
-      if (all(dim(tab) >= 2)) {
-        M[i, j] <- CramerV(tab, bias.correct = TRUE)
-      } else {
-        M[i, j] <- NA_real_
-      }
-    }
-  }
-}
-
-# Visualize association strengths (0..1)
-corrplot(M,
-         is.corr = TRUE,            # treat as a 0..1 "correlation-like" measure
-         method  = "circle",
-         type    = "upper",
-         col     = colorRampPalette(c("white","steelblue"))(200),
-         tl.col  = "black",
-         tl.srt  = 45,
-         title   = "Association strengths (|r|, η², Cramér’s V)")
-
-
-
-
