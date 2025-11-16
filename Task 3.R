@@ -28,8 +28,8 @@ data_3 <- read_csv("Data_T3.csv", show_col_types = FALSE)
 data_3 <- data_3[,-1]
 
 # Get numerical and categorical data
-data_3_num <- data_3[, c(1,3,6,7,8)]
-data_3_cat <- data_3[, c(2,4,5)]
+data_3_num <- data_3[, c(1,3,6,8)]
+data_3_cat <- data_3[, c(2,4,5,7)]
 
 # Convert categorical variables to numeric (0/1)
 data_3_mod <- data_3
@@ -89,27 +89,6 @@ boxplot(GFR ~ TreatmentGroup,
         xlab = "Treatment Group",
         ylab = "GFR (mL/min/1.73m²)",
         main = "GFR Distribution by Treatment Group")
-
-
-
-# Compare baseline covariates by TreatmentGroup (simple plots)
-# Age and GFR by treatment
-data_3 %>%
-  ggplot(aes(x = TreatmentGroup, y = Age)) +
-  geom_boxplot() +
-  theme_bw()
-
-data_3 %>%
-  ggplot(aes(x = TreatmentGroup, y = GFR)) +
-  geom_boxplot() +
-  theme_bw()
-
-# ECOG distribution by treatment
-data_3 %>%
-  ggplot(aes(x = ECOG_PS, fill = TreatmentGroup)) +
-  geom_bar(position = "fill") +
-  ylab("Proportion") +
-  theme_bw()
 
 
 # === Covariance and Correlation matrices ======================================
