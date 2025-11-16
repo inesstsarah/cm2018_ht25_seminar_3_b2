@@ -18,11 +18,13 @@ Model: 0 = mice with induced tumours, 1 = xenograft mice.
 
 Study the effect of the experimental treatment on tumour growth.
 
-1. Explore the data visually.
+1. Explore the data visually. (done)
 2. Propose and develop a statistical model to analyse the effects of 
-treatment across the two mice models. 
-3. Analyse the statistical model results.
-4. Carry out predictions to explore the impact of treatment and disease model. 
+treatment across the two mice models.  (done)
+3. Analyse the statistical model results. (done)
+4. Carry out predictions to explore the impact of treatment and disease model. (not sure)
 5. Comment on the ability to carry out predictions using your model, 
-within and beyond the ranges of the data (interpolation and extrapolation). 
- 
+within and beyond the ranges of the data (interpolation and extrapolation). (not sure)
+ > I think I can do this by obscuring some of the data and checking if it 
+ predicts is well
+ > But what is the measure of goodness? Is it AIC and BIC?
