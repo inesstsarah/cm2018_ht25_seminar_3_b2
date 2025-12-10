@@ -3,6 +3,8 @@
 install.packages("RSiena")
 install.packages("jtools")
 install.packages("lmerTest")
+install.packages("dplyr")
+
 library(effects)
 library(ggplot2)
 library(lme4)
@@ -10,13 +12,18 @@ library(RSiena)
 library(jtools)
 library(lmerTest)
 library(boot)
-install.packages("dplyr")
 library(dplyr)
+library(lme4)
 # Read data
 data <- read.csv("data/Data_T2.csv")
 data
 
 str(data)
+
+# get log transform of DV
+data$logDV <- log(data$DV)
+str(data)
+
 
 # ---- Explore the data visually. ----
 
@@ -33,52 +40,51 @@ control_xeno <- control_group[control_group$Model==1,]
 treated_xeno <- treated_group[treated_group$Model==1,]
 control_tumor <- control_group[control_group$Model==0,]
 treated_tumor <- treated_group[treated_group$Model==0,]
-
 # Get averages for the plots
 
 avg_ctr_xeno <- control_xeno %>%
   group_by(Time) %>%
-  summarise(mean_DV = mean(DV, na.rm = TRUE))
+  summarise(mean_DV = mean(logDV, na.rm = TRUE))
 avg_tr_xeno <- treated_xeno %>%
   group_by(Time) %>%
-  summarise(mean_DV = mean(DV, na.rm = TRUE))
+  summarise(mean_DV = mean(log(DV), na.rm = TRUE))
 avg_ctr_tumor <- control_tumor %>%
   group_by(Time) %>%
-  summarise(mean_DV = mean(DV, na.rm = TRUE))
+  summarise(mean_DV = mean(log(DV), na.rm = TRUE))
 avg_tr_tumor <- treated_tumor %>%
   group_by(Time) %>%
-  summarise(mean_DV = mean(DV, na.rm = TRUE))
+  summarise(mean_DV = mean(log(DV), na.rm = TRUE))
 
 # ---- Plot all line plots ----
 
-ggplot(data=control_xeno, aes(x=Time, y=DV, group=as.factor(ID), colour = as.factor(ID))) +
+ggplot(data=control_xeno, aes(x=Time, y=logDV, group=as.factor(ID), colour = as.factor(ID))) +
   geom_line(size = 0.7) +  
   geom_line(data = avg_ctr_xeno, aes(x = Time, y = mean_DV), inherit.aes = FALSE, colour = "black", size = 1) +
   scale_color_discrete(name = "ID") +
-  ggtitle("Control Xenograft Mice") + ylim(300,1400) +
+  ggtitle("Control Xenograft Mice") +
   theme(plot.title = element_text(hjust = 0.5)) 
 
-ggplot(data=treated_xeno, aes(x=Time, y=DV, group=as.factor(ID), colour = as.factor(ID))) +
+ggplot(data=treated_xeno, aes(x=Time, y=logDV, group=as.factor(ID), colour = as.factor(ID))) +
   geom_line(size = 0.7) + 
   geom_line(data = avg_tr_xeno, aes(x = Time, y = mean_DV), inherit.aes = FALSE, colour = "black", size = 1) +
   scale_color_discrete(name = "ID") + 
-  ggtitle("Treated Xenograft Mice") + ylim(300,1400) +
+  ggtitle("Treated Xenograft Mice") +
   theme(plot.title = element_text(hjust = 0.5))
 
 
-ggplot(data=control_tumor, aes(x=Time, y=DV, group=as.factor(ID), colour = as.factor(ID))) +
+ggplot(data=control_tumor, aes(x=Time, y=logDV, group=as.factor(ID), colour = as.factor(ID))) +
   geom_line(size = 0.7)+
   geom_line(data = avg_ctr_tumor, aes(x = Time, y = mean_DV), inherit.aes = FALSE, colour = "black", size = 1) +
   scale_color_discrete(name = "ID") + 
-  ggtitle("Control Tumor Mice") + ylim(300,1400) +
+  ggtitle("Control Tumor Mice")  +
   theme(plot.title = element_text(hjust = 0.5))
   
   
-ggplot(data=treated_tumor, aes(x=Time, y=DV, group=as.factor(ID), colour = as.factor(ID))) +
+ggplot(data=treated_tumor, aes(x=Time, y=logDV, group=as.factor(ID), colour = as.factor(ID))) +
   geom_line(size = 0.7)+
   geom_line(data = avg_tr_tumor, aes(x = Time, y = mean_DV), inherit.aes = FALSE, colour = "black", size = 1) +
   scale_color_discrete(name = "ID") + 
-  ggtitle("Treated Tumor Mice")  + ylim(300,1400) +
+  ggtitle("Treated Tumor Mice")  +
   theme(plot.title = element_text(hjust = 0.5))
 
 
@@ -163,14 +169,15 @@ p8 <- ggplot(tumor_group, aes(x=Time, y=DV, group = Time,  color = as.factor(Tre
 p8
 
 # ----- Modelling -----
+# MODELLING BUT WITH LOGDV for the linear model
 
 # Null model to see baseline
-m0_lme <- lmer(DV~1 + (1 | ID), tumor_group)
+m0_lme <- lmer(logDV~1 + (1 | ID), tumor_group)
 plot(m0_lme)
 summary(m0_lme)
 
 # Mixed effects model treatment w/ partial pooling (tumor group)
-tumor_model <- lmer(DV~1 + Treatment + (1|ID), tumor_group)
+tumor_model <- lmer(logDV~1 + Treatment + (1|ID), tumor_group)
 summary(tumor_model)
 plot(tumor_model)
 summ(tumor_model)
@@ -180,26 +187,27 @@ summ(tumor_model)
 # Pseudo-R² (total) = 0.50
 # Fixed effects is 0.16, fixed + inter individual is 0.5
 # ICC 0.4, varianxce by individual (not so much)
-
+exp(-0.18445)
 ranova(tumor_model)
 
 # Mixed effects model treatment w/ pooling (xenograft group)
-xeno_model <- lmer(DV~1 + Treatment + (1|ID), xeno_group)
+xeno_model <- lmer(logDV~1 + Treatment + (1|ID), xeno_group)
 summary(xeno_model)
 plot(xeno_model)
 summ(xeno_model)
+exp(-0.14838)
 #AIC = 41177.46, BIC = 41201.84
 #Pseudo-R² (fixed effects) = 0.10
 #Pseudo-R² (total) = 0.44
 
 # Likelihood ratio test tumor group
-m_null <- lmer(DV~1 + (1|ID), tumor_group, REML = FALSE)
-m_treat <- lmer(DV~1 + Treatment + (1|ID), tumor_group, REML = FALSE)
+m_null <- lmer(logDV~1 + (1|ID), tumor_group, REML = FALSE)
+m_treat <- lmer(logDV~1 + Treatment + (1|ID), tumor_group, REML = FALSE)
 anova(m_null, m_treat)
 # pval = 0.001509, treatment performs better
 
-m_null <- lmer(DV~1 + (1|ID), xeno_group, REML = FALSE)
-m_treat <- lmer(DV~1 + Treatment + (1|ID), xeno_group, REML = FALSE)
+m_null <- lmer(logDV~1 + (1|ID), xeno_group, REML = FALSE)
+m_treat <- lmer(logDV~1 + Treatment + (1|ID), xeno_group, REML = FALSE)
 anova(m_null, m_treat)
 # pval = 0.002323 , treatment performs better than null
 
@@ -210,7 +218,7 @@ plot(allEffects(xeno_model))
 
 tumor_group$fit <- predict(m2_lme)   #Add model fits to dataframe
 
-p <- ggplot(tumor_group, aes(x = Time, y = DV, colour = ID)) +
+p <- ggplot(tumor_group, aes(x = Time, y = logDV, colour = ID)) +
   geom_point(size=3) +
   geom_line(aes(y = predict(m2_lme)),size=1) 
 p
@@ -224,9 +232,11 @@ confint(tumor_model, parm = c(3,4), method ="boot", nsim = 1000, boot.type = "pe
 
 
 # ----- Conditional growth model ----
-cond_model_tumor <- lmer(DV ~ 1 + Treatment * Time + (1 + Time | ID), tumor_group)
+cond_model_tumor <- lmer(logDV ~ 1 + Treatment * Time + (1 + Time | ID), tumor_group)
 summary(cond_model_tumor)
 summ(cond_model_tumor)
+exp(0.0069376)
+exp(-0.0047094)
 # AIC = 21324.38, BIC = 21369.89
 # Pseudo-R² (fixed effects) = 0.59
 # Pseudo-R² (total) = 0.96 
@@ -244,14 +254,14 @@ avg_preds <- tumor_group %>%
 # Plot
 
 # Plot actual DV and predicted values over time by ID, faceted by Treatment
-ggplot(tumor_group, aes(x = Time, y = DV, color = as.factor(ID))) +
+ggplot(tumor_group, aes(x = Time, y = logDV, color = as.factor(ID))) +
   geom_point(alpha = 0.6) +  # actual data points
   geom_line(aes(y = predicted_cond), size = 1) +  # prediction lines
   facet_wrap(~ Treatment, labeller = labeller(Treatment = treat.labs)) +  # separate panels by treatment
   labs(
     title = "Tumor Group - DV over Time by ID, Faceted by Treatment",
     x = "Time (days)",
-    y = "DV",
+    y = "logDV",
     color = "ID"
   ) +
   theme_minimal() +
@@ -264,7 +274,7 @@ ggplot(avg_preds, aes(x = Time, y = mean_pred, color = as.factor(Treatment))) +
   labs(
     title = "Average Predicted DV over Time by Treatment",
     x = "Time (days)",
-    y = "Predicted DV",
+    y = "Predicted logDV",
     color = "Treatment"
   ) +
   theme_minimal() +
@@ -275,14 +285,14 @@ fit2.m <- predict(cond_model_tumor, re.form = NA)
 
 # Plot with marginal fit
 # Plot actual DV and predicted values over time by ID, faceted by Treatment
-ggplot(tumor_group, aes(x = Time, y = DV, color = as.factor(Treatment))) +
+ggplot(tumor_group, aes(x = Time, y = logDV, color = as.factor(Treatment))) +
   geom_point(alpha = 0.6) +  # actual data points
   geom_line(aes(y = fit2.m), size = 1) +  # prediction lines
   facet_wrap(~ Treatment, labeller = labeller(Treatment = treat.labs)) +  # separate panels by treatment
   labs(
     title = "Xenograft Group - DV over Time by ID, Marginal Fit, Faceted by Treatment",
     x = "Time (days)",
-    y = "DV",
+    y = "logDV",
     color = "Treatment"
   ) +
   theme_minimal() +
@@ -291,13 +301,15 @@ ggplot(tumor_group, aes(x = Time, y = DV, color = as.factor(Treatment))) +
 
 plot(allEffects(cond_model_tumor))
 
-cond_model_xeno <- lmer(DV ~ 1 + Treatment * Time + (1 + Time | ID), xeno_group)
+cond_model_xeno <- lmer(logDV ~ 1 + Treatment * Time + (1 + Time | ID), xeno_group)
 summary(cond_model_xeno)
 summ(cond_model_xeno)
 # AIC = 21324.38, BIC = 21369.89
 # Pseudo-R² (fixed effects) = 0.59
 # Pseudo-R² (total) = 0.96 
 # ICC = 0.79
+exp(0.0071325)
+exp(-0.0031947)
 
 plot(allEffects(cond_model_xeno))
 
@@ -315,7 +327,7 @@ avg_preds <- xeno_group %>%
 # Plot
 
 # Plot actual DV and predicted values over time by ID, faceted by Treatment
-ggplot(xeno_group, aes(x = Time, y = DV, color = as.factor(ID))) +
+ggplot(xeno_group, aes(x = Time, y = logDV, color = as.factor(ID))) +
   geom_point(alpha = 0.6) +  # actual data points
   geom_line(aes(y = predicted_cond), size = 1) +  # prediction lines
   facet_wrap(~ Treatment, labeller = labeller(Treatment = treat.labs)) +  # separate panels by treatment
@@ -330,7 +342,7 @@ ggplot(xeno_group, aes(x = Time, y = DV, color = as.factor(ID))) +
 
 # Plot with marginal fit
 # Plot actual DV and predicted values over time by ID, faceted by Treatment
-ggplot(xeno_group, aes(x = Time, y = DV, color = as.factor(Treatment))) +
+ggplot(xeno_group, aes(x = Time, y = logDV, color = as.factor(Treatment))) +
   geom_point(alpha = 0.6) +  # actual data points
   geom_line(aes(y = fit2.m), size = 1) +  # prediction lines
   facet_wrap(~ Treatment, labeller = labeller(Treatment = treat.labs)) +  # separate panels by treatment
@@ -354,3 +366,25 @@ ggplot(avg_preds, aes(x = Time, y = fit2.m, color = as.factor(Treatment))) +
   ) +
   theme_minimal() +
   theme(legend.position = "right")
+
+
+# Investigate Time*Treatment*Model
+
+all_model <- lmer(logDV ~ 1 + Treatment * Time * Model + (1 + Time | ID), data)
+summary(all_model)
+summ(all_model)
+
+plot(allEffects(all_model))
+
+exp(6.193)
+exp(0.0910) 
+(exp(0.0910) - 1)*100
+
+# Calculations
+(exp(-0.14838)-1) *100
+(exp(-0.18445) -1)*100
+exp(-0.18445)
+(exp(-0.0047094)-1)*100 
+(exp(0.0071325) - 1)*100
+(exp(-0.0031947) - 1) * 100
+(exp(0.0910) - 1)*100
