@@ -290,7 +290,7 @@ ggplot(tumor_group, aes(x = Time, y = logDV, color = as.factor(Treatment))) +
   geom_line(aes(y = fit2.m), size = 1) +  # prediction lines
   facet_wrap(~ Treatment, labeller = labeller(Treatment = treat.labs)) +  # separate panels by treatment
   labs(
-    title = "Xenograft Group - DV over Time by ID, Marginal Fit, Faceted by Treatment",
+    title = "Tumor Group - DV over Time by ID, Marginal Fit, Faceted by Treatment",
     x = "Time (days)",
     y = "logDV",
     color = "Treatment"
@@ -334,7 +334,7 @@ ggplot(xeno_group, aes(x = Time, y = logDV, color = as.factor(ID))) +
   labs(
     title = "Xenograft Group - DV over Time by ID, Faceted by Treatment",
     x = "Time (days)",
-    y = "DV",
+    y = "logDV",
     color = "ID"
   ) +
   theme_minimal() +
@@ -349,7 +349,7 @@ ggplot(xeno_group, aes(x = Time, y = logDV, color = as.factor(Treatment))) +
   labs(
     title = "Xenograft Group - DV over Time by ID, Marginal Fit, Faceted by Treatment",
     x = "Time (days)",
-    y = "DV",
+    y = "logDV",
     color = "Treatment"
   ) +
   theme_minimal() +
